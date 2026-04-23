@@ -137,3 +137,70 @@ def test_no_tool_calls_routes_to_end() -> None:
     result = _invoke(graph, "hi", thread_id="t-end")
     assert result["turn"] == 1
     assert result["messages"][-1].content == "done."
+
+
+# --------------------------- 3주차 배선 테스트 --------------------------
+
+def test_spawn_subagent_tool_routes_through_subagent_node() -> None:
+    """부모가 spawn_subagent 호출 → subagent 노드 → ToolMessage 반환 →
+    부모 agent 가 최종 응답을 낸다."""
+    llm = _ScriptedToolCallingLLM(
+        responses=[
+            # 부모 턴 1: 자식 spawn.
+            AIMessage(
+                content="Delegating to child.",
+                tool_calls=[{
+                    "name": "spawn_subagent",
+                    "args": {
+                        "task": "count to 3",
+                        "context": "ignore",
+                        "constraints": "no tools",
+                    },
+                    "id": "s1",
+                }],
+            ),
+            # 자식 그래프 첫 스텝: 자식 응답 (도구 없음).
+            AIMessage(content="one-two-three"),
+            # 부모 턴 2: 자식 요약을 보고 최종 응답.
+            AIMessage(content="Child said: one-two-three"),
+        ]
+    )
+    graph = build_graph(llm, use_llm_summarizer=False)
+    result = _invoke(graph, "do it", thread_id="t-sub")
+    # subagent 가 돌아온 뒤에 부모의 최종 응답이 나온다.
+    assert result["messages"][-1].content.startswith("Child said")
+    tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    # ToolMessage 하나 = subagent 의 요약이 부모로 돌아간 것.
+    assert len(tool_msgs) == 1
+    assert "one-two-three" in tool_msgs[0].content
+
+
+def test_compactor_triggers_above_threshold() -> None:
+    """임계치를 아주 작게 강제해 도구 턴 한 번 뒤에 compactor 가 돌게 한다."""
+    llm = _ScriptedToolCallingLLM(
+        responses=[
+            AIMessage(
+                content="X" * 10_000,
+                tool_calls=[{
+                    "name": "load_skill",
+                    "args": {"name": "echo"},
+                    "id": "c1",
+                }],
+            ),
+            AIMessage(content="done."),
+        ]
+    )
+    graph = build_graph(
+        llm,
+        compact_threshold=100,        # 터무니없이 낮춰 compaction 강제
+        use_llm_summarizer=False,     # 오프라인 fallback summarizer 사용
+    )
+    result = _invoke(graph, "go", thread_id="t-compact")
+    # compaction 이후에도 messages 는 수렴하고 응답이 나와야 한다.
+    assert result["messages"][-1].content == "done."
+    # 스킬 메시지는 축출되면 안 된다 (pinning).
+    remaining = [
+        m for m in result["messages"]
+        if isinstance(m, ToolMessage) and m.content.startswith("<skill:echo>")
+    ]
+    assert len(remaining) == 1, "compactor 가 skill ToolMessage 를 축출했다"
