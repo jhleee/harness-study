@@ -109,7 +109,7 @@ def run(
     return 0
 
 
-def _preview(text: str, n: int = 120) -> str:
+def _preview(text: str, n: int = 400) -> str:
     text = (text or "").replace("\n", " ").strip()
     return text[:n] + ("…" if len(text) > n else "")
 
