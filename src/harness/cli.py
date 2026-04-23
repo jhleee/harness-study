@@ -115,7 +115,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _force_utf8_stdio() -> None:
+    """한국어 로케일의 Windows 콘솔은 기본값이 cp949 라, 모델이 CJK / em-dash /
+    스마트 따옴표 문자를 내보내면 터진다. CLI 하니스에는 UTF-8 + errors='replace' 가
+    가장 덜 놀라운 기본값이다."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_stdio()
     args = _parse_args(argv)
     thread_id = args.thread_id or f"cli-{uuid.uuid4().hex[:8]}"
     trace_path = Path(args.trace) if args.trace else (TRACE_DIR / f"{thread_id}.jsonl")
