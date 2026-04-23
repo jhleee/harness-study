@@ -76,4 +76,26 @@ def skill_body_path(name: str) -> Path:
     return SKILLS_DIR / name / "SKILL.md"
 
 
-ALL_TOOLS = [load_skill, view]
+@tool
+def spawn_subagent(task: str, context: str = "", constraints: str = "") -> str:
+    """탐색적이거나 범위가 제한된 작업을 자식 에이전트에게 위임한다. 자식은 자신의
+    컨텍스트에서 돌며, 당신의 메시지는 전달되지 않는다. `context` 와 `constraints` 에
+    담은 내용만이 자식에게 전해진다. 중간 턴이 많이 발생하는 작업(파일 검색, 로그 grep,
+    읽기 중심의 긴 탐색) 에서 그 부산물이 당신의 컨텍스트에 남는 것을 피하고 싶을 때 사용한다.
+
+    Args:
+        task:        자식이 해결할 질문 또는 작업. 보통 한 문장. context 가 없으면
+                     자식은 그 외 아무 정보도 보지 못한다.
+        context:     선택 사항 — 당신의 컨텍스트에서 자식에게 필요한 정보만 추려서
+                     (파일 경로, 최근 발견, 사용자로부터의 제약). 짧게 유지하라;
+                     길어지면 isolation 의 목적이 사라진다.
+        constraints: 선택 사항 — 자식이 따라야 할 규칙 (도구 화이트리스트, 출력 포맷, 예산 등).
+
+    Returns:
+        자식이 찾거나 수행한 내용의 짧은 요약.
+    """
+    # 센티넬 — 라우팅을 통해 subagent 노드가 처리한다.
+    raise NotImplementedError("spawn_subagent 는 subagent 노드가 처리한다")
+
+
+ALL_TOOLS = [load_skill, view, spawn_subagent]

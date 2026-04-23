@@ -10,7 +10,7 @@ from harness.tools import ALL_TOOLS, _read_safe, load_skill, view
 
 def test_tool_schemas_are_registered() -> None:
     names = {t.name for t in ALL_TOOLS}
-    assert names == {"load_skill", "view"}
+    assert names == {"load_skill", "view", "spawn_subagent"}
 
 
 def test_load_skill_schema_has_name_param() -> None:
