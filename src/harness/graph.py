@@ -1,24 +1,18 @@
 """그래프 조립.
 
-1주차:
-    START → gateway → session_bootstrap → agent → END
+진화 요약:
+  1주차 — frozen snapshot (gateway → bootstrap → agent → END)
+  2주차 — Progressive Disclosure (+ skill_loader, tool_dispatch)
+  3주차 — externalization (+ compactor, subagent)
+  4주차 (이 리비전) — 자기개선 + 승인 게이트
+           + self_improve (finalize_task 로 SKILL.md 증류)
+           + human_gate    (파괴적 도구에 대한 interrupt_before)
 
-2주차: Progressive Disclosure + tool dispatch 추가.
-
-3주차 (이 리비전): compactor + subagent.
-
-    agent --spawn_subagent--> subagent       (새 자식 그래프 호출)
-    agent --load_skill-->     skill_loader   → route_after_tool
-    agent --그 외 도구 -->    tool_dispatch  → route_after_tool
-    agent --tool_calls 없음--> END
-
-    route_after_tool: tokens >= threshold ? compactor : agent
-
-llm.bind_tools(ALL_TOOLS) 로 LLM 에 스키마를 바인딩한다.
-subagent 는 compile 이후 graph_ref 컨테이너에 담긴 *같은* 컴파일 그래프로 재귀 호출한다.
+전체 라우팅 mermaid — 가이드 §2 참고.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from langchain_core.language_models import BaseChatModel
@@ -34,19 +28,21 @@ from harness.nodes.compactor import (
     make_compactor,
 )
 from harness.nodes.gateway import gateway
+from harness.nodes.human_gate import human_gate
+from harness.nodes.self_improve import make_self_improve_node
 from harness.nodes.skill_loader import skill_loader
 from harness.nodes.subagent import make_subagent_node
 from harness.nodes.tool_dispatch import make_tool_dispatch
 from harness.state import HarnessState
-from harness.tools import ALL_TOOLS
+from harness.tools import ALL_TOOLS, DESTRUCTIVE_TOOLS
 
 
 def route_after_agent(state: HarnessState) -> str:
     """agent 노드에서 나가는 조건부 엣지.
 
-    순서가 중요하다 — load_skill 은 전용 노드(스킬 본문 pinning) 를, spawn_subagent 는
-    자식 그래프 노드를 받고, 그 외는 범용 디스패치로 흘러간다.
-    `finalize_task` 같은 파괴적/종결 도구는 이후 주차에서 도입된다.
+    순서가 중요하다 — finalize_task 는 self_improve 로, load_skill 은 전용 노드
+    (스킬 본문 pinning), spawn_subagent 는 자식 그래프 노드, DESTRUCTIVE_TOOLS 는
+    human_gate 로, 그 외는 범용 디스패치로.
     """
     if not state.get("messages"):
         return END
@@ -55,10 +51,14 @@ def route_after_agent(state: HarnessState) -> str:
     if not calls:
         return END
     name = calls[0].get("name", "")
+    if name == "finalize_task":
+        return "self_improve"
     if name == "load_skill":
         return "skill_loader"
     if name == "spawn_subagent":
         return "subagent"
+    if name in DESTRUCTIVE_TOOLS:
+        return "human_gate"
     return "tool_dispatch"
 
 
@@ -102,6 +102,7 @@ def build_graph(
     tools=None,
     compact_threshold: int = DEFAULT_COMPACT_THRESHOLD,
     use_llm_summarizer: bool = True,
+    skills_dir: Path | None = None,
 ):
     tools = tools if tools is not None else ALL_TOOLS
     tools_by_name = {t.name: t for t in tools}
@@ -117,7 +118,6 @@ def build_graph(
     # subagent 는 자기가 재귀 호출할 컴파일된 그래프를 참조해야 한다. compile() 이후에
     # 이 컨테이너를 채워 준다.
     graph_ref: dict[str, Any] = {"graph": None}
-
     summarizer = _make_llm_summarizer(llm) if use_llm_summarizer else None
 
     g = StateGraph(HarnessState)
@@ -128,6 +128,8 @@ def build_graph(
     g.add_node("tool_dispatch", make_tool_dispatch(tools_by_name))
     g.add_node("subagent", make_subagent_node(graph_ref))
     g.add_node("compactor", make_compactor(summarizer, threshold=compact_threshold))
+    g.add_node("self_improve", make_self_improve_node(skills_dir=skills_dir))
+    g.add_node("human_gate", human_gate)
 
     g.add_edge(START, "gateway")
     g.add_edge("gateway", "session_bootstrap")
@@ -140,6 +142,8 @@ def build_graph(
             "skill_loader": "skill_loader",
             "tool_dispatch": "tool_dispatch",
             "subagent": "subagent",
+            "self_improve": "self_improve",
+            "human_gate": "human_gate",
             END: END,
         },
     )
@@ -153,6 +157,27 @@ def build_graph(
         )
     g.add_edge("compactor", "agent")
 
-    compiled = g.compile(checkpointer=checkpointer or MemorySaver())
+    # self_improve 는 이번 턴의 종착점 — SKILL.md 가 쓰였고 LLM 은 확인 ToolMessage 를
+    # 받았으니, 다시 agent 로 돌려 보내 추가 숙고를 시킬 필요가 없다.
+    g.add_edge("self_improve", END)
+
+    # 사람 승인이 끝나 그래프가 resume 되면, 파괴적 도구를 일반 도구처럼 tool_dispatch
+    # 로 흘려 보낸다 — human_gate 는 승인 기록만 하고, 실제 실행은 디스패처의 몫.
+    g.add_edge("human_gate", "tool_dispatch")
+
+    compiled = g.compile(
+        checkpointer=checkpointer or MemorySaver(),
+        interrupt_before=["human_gate"],
+    )
     graph_ref["graph"] = compiled
     return compiled
+
+
+def make_sqlite_checkpointer(db_path: str | Path):
+    """호출자가 langgraph 내부를 import 하지 않도록 하는 얇은 래퍼."""
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    return SqliteSaver(conn)

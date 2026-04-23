@@ -20,7 +20,7 @@ from typing import Iterable, Iterator
 from langchain_core.messages import HumanMessage
 
 from harness.config import TRACE_DIR, llm, load_settings
-from harness.graph import build_graph
+from harness.graph import build_graph, make_sqlite_checkpointer
 from harness.metrics import (
     TraceRecord,
     TraceWriter,
@@ -58,14 +58,17 @@ def run(
     *,
     verbose_trace: bool = True,
     compact_threshold: int | None = None,
+    db_path: Path | None = None,
 ) -> int:
     settings = load_settings()
     if not settings.api_key:
         print("error: OPENAI_API_KEY 가 설정되지 않았습니다 (.env 를 확인하세요)", file=sys.stderr)
         return 2
-    graph_kwargs = {}
+    graph_kwargs: dict = {}
     if compact_threshold is not None:
         graph_kwargs["compact_threshold"] = compact_threshold
+    if db_path is not None:
+        graph_kwargs["checkpointer"] = make_sqlite_checkpointer(db_path)
     graph = build_graph(llm(settings), **graph_kwargs)
     writer = TraceWriter(trace_path)
     config = {"configurable": {"thread_id": thread_id}}
@@ -120,6 +123,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="stderr 로 찍히는 턴별 트레이스 라인을 끈다")
     p.add_argument("--compact-threshold", type=int, default=None,
                    help="compactor 의 문자 수 임계치 (디버그/E2E 용).")
+    p.add_argument("--db", default=None,
+                   help="영속 checkpoint 용 SqliteSaver 경로.")
     return p.parse_args(argv)
 
 
@@ -146,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         trace_path=trace_path,
         verbose_trace=not args.quiet,
         compact_threshold=args.compact_threshold,
+        db_path=Path(args.db) if args.db else None,
     )
 
 

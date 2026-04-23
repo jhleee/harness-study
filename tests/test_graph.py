@@ -175,6 +175,70 @@ def test_spawn_subagent_tool_routes_through_subagent_node() -> None:
     assert "one-two-three" in tool_msgs[0].content
 
 
+def test_finalize_task_routes_to_self_improve_and_writes_skill(tmp_path) -> None:
+    """도구 호출을 충분히 한 뒤 agent 가 finalize_task 를 호출하면 → self_improve 가
+    돌아 data/skills/<slug>/SKILL.md 가 쓰인다."""
+    # seed: 첫 턴이 도구 호출을 만드므로 tool_call_count >= 1.
+    # 5 개의 더미 trace 로 self_improve 임계치를 넘긴다.
+    llm = _ScriptedToolCallingLLM(
+        responses=[
+            AIMessage(
+                content="done finalizing",
+                tool_calls=[{
+                    "name": "finalize_task",
+                    "args": {"title": "week4-test-skill"},
+                    "id": "f1",
+                }],
+            ),
+        ]
+    )
+    # 실제 도구를 돌리지 않고 finalize 가 임계치를 넘도록 state 를 seed.
+    graph = build_graph(llm, use_llm_summarizer=False, skills_dir=tmp_path)
+    seeded_trace = [
+        {"reasoning": f"r{i}", "tool": "view",
+         "args": {"path": f"/x/{i}"}, "observation": f"o{i}"}
+        for i in range(5)
+    ]
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="finalize please")],
+            "task_trace": seeded_trace,
+            "tool_call_count": 5,
+        },
+        config={"configurable": {"thread_id": "t-fin"}},
+    )
+    skill_md = tmp_path / "week4-test-skill" / "SKILL.md"
+    assert skill_md.exists(), "self_improve 가 SKILL.md 를 쓰지 않았다"
+    body = skill_md.read_text(encoding="utf-8")
+    assert "Procedure" in body
+
+
+def test_sqlite_checkpointer_persists_across_builds(tmp_path) -> None:
+    """같은 sqlite db 와 같은 thread_id 로 그래프를 두 번 만들면 — 두 번째 빌드는
+    첫 실행의 메시지를 봐야 한다."""
+    from harness.graph import make_sqlite_checkpointer
+
+    db = tmp_path / "ckp.db"
+
+    # 첫 세션.
+    llm1 = _ScriptedToolCallingLLM(responses=[AIMessage(content="first")])
+    graph1 = build_graph(llm1, checkpointer=make_sqlite_checkpointer(db))
+    r1 = _invoke(graph1, "turn-one", thread_id="t-persist")
+    assert r1["messages"][-1].content == "first"
+
+    # 두 번째 세션, 새 그래프, 새 LLM — 하지만 같은 db + thread.
+    llm2 = _ScriptedToolCallingLLM(responses=[AIMessage(content="second")])
+    graph2 = build_graph(llm2, checkpointer=make_sqlite_checkpointer(db))
+    r2 = _invoke(graph2, "turn-two", thread_id="t-persist")
+
+    # state 에 첫 세션의 'first' + 새 'second' 가 누적된다.
+    ai_contents = [
+        m.content for m in r2["messages"]
+        if isinstance(m, AIMessage) and isinstance(m.content, str)
+    ]
+    assert "first" in ai_contents and "second" in ai_contents
+
+
 def test_compactor_triggers_above_threshold() -> None:
     """임계치를 아주 작게 강제해 도구 턴 한 번 뒤에 compactor 가 돌게 한다."""
     llm = _ScriptedToolCallingLLM(
