@@ -1,0 +1,8 @@
+# 3주차 E2E — subagent RPC + 스킬 pinning 을 갖춘 compactor
+# 턴 1: echo 스킬 로드 (loaded_skills 채움)
+# 턴 2: 사소한 질문을 subagent 에 위임
+#         (부모는 자식의 요약을 ToolMessage 로 보고 응답)
+# 턴 3: 최종 응답 — 사용한 도구 나열, 새 도구 호출 없음.
+echo 스킬의 본문을 반드시 load_skill 도구를 name="echo" 로 호출해 불러와. 호출 후 추가 설명 없이 응답을 끝내.
+spawn_subagent 도구를 다음 인자로 정확히 호출해: task="2 + 2는 얼마야? 숫자로만 답해", context="", constraints="도구를 사용하지 말고 바로 숫자만 답하라". 자식의 답을 받은 뒤 "자식이 답한 숫자: <답>"의 형태로 한 줄로만 응답해줘.
+지금까지 이 대화에서 네가 사용한 도구의 이름을 콤마로 구분해 한 줄로만 답해줘. 새 도구 호출은 하지 마.

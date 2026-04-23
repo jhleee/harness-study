@@ -57,12 +57,16 @@ def run(
     trace_path: Path,
     *,
     verbose_trace: bool = True,
+    compact_threshold: int | None = None,
 ) -> int:
     settings = load_settings()
     if not settings.api_key:
         print("error: OPENAI_API_KEY 가 설정되지 않았습니다 (.env 를 확인하세요)", file=sys.stderr)
         return 2
-    graph = build_graph(llm(settings))
+    graph_kwargs = {}
+    if compact_threshold is not None:
+        graph_kwargs["compact_threshold"] = compact_threshold
+    graph = build_graph(llm(settings), **graph_kwargs)
     writer = TraceWriter(trace_path)
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -114,6 +118,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="비대화형: 이 파일에서 한 줄에 하나씩 입력을 읽는다")
     p.add_argument("--quiet", action="store_true",
                    help="stderr 로 찍히는 턴별 트레이스 라인을 끈다")
+    p.add_argument("--compact-threshold", type=int, default=None,
+                   help="compactor 의 문자 수 임계치 (디버그/E2E 용).")
     return p.parse_args(argv)
 
 
@@ -139,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         thread_id=thread_id,
         trace_path=trace_path,
         verbose_trace=not args.quiet,
+        compact_threshold=args.compact_threshold,
     )
 
 
