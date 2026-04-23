@@ -44,4 +44,8 @@ class HarnessState(TypedDict, total=False):
     tool_call_count: int
     task_trace: Annotated[list[dict[str, Any]], operator.add]
 
+    # 4주차: human_gate 가 대기 중인 tool_call 을 여기에 보관해서, 외부 검토자가
+    # 승인/거부 판단을 내릴 수 있게 한다.
+    pending_approval: dict[str, Any] | None
+
     turn: int
