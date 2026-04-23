@@ -98,4 +98,30 @@ def spawn_subagent(task: str, context: str = "", constraints: str = "") -> str:
     raise NotImplementedError("spawn_subagent 는 subagent 노드가 처리한다")
 
 
-ALL_TOOLS = [load_skill, view, spawn_subagent]
+@tool
+def finalize_task(title: str) -> str:
+    """현재 작업이 완료됐음을 선언해, 하니스가 성공한 트레이스를 재사용 가능한
+    SKILL.md 로 증류하도록 만든다. 다음 조건일 때만 호출:
+
+      - 실제로 작업을 해결했을 때 (포기했으면 부르지 말 것).
+      - 최소 ~5 회의 의미있는 도구 호출이 해결로 이어졌을 때 — 더 적으면
+        LLM 요약 왕복에 값하는 증류물이 나오지 않는다.
+
+    Args:
+        title: 스킬의 짧은 이름 (kebab-case 권장). data/skills/ 아래 디렉터리
+               이름으로 그대로 사용된다.
+
+    Returns:
+        저장된 것(또는 저장하지 않은 이유) 에 대한 한 줄 확인 메시지.
+    """
+    raise NotImplementedError("finalize_task 는 self_improve 노드가 처리한다")
+
+
+ALL_TOOLS = [load_skill, view, spawn_subagent, finalize_task]
+
+# 파괴적인 도구 이름 — 라우터가 이 도구들을 human_gate 의 interrupt_before 승인으로 보낸다.
+# 추가/제거가 쉽도록 set 으로 유지.
+DESTRUCTIVE_TOOLS: set[str] = {
+    # 4주차 placeholder. 실제 파괴적 도구 (bash_rm, send_email, charge_card 등) 가
+    # 구현되면 여기에 등록한다.
+}
