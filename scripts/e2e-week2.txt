@@ -1,0 +1,8 @@
+# Week 2 E2E — Progressive Disclosure + tool dispatch.
+# Turn 1: instruct the model to call load_skill — exercises skill_loader.
+# Turn 2: instruct the model to call view on a pre-staged file — exercises
+#         tool_dispatch + view tool.
+# Turn 3: plain follow-up — no tool calls, exits to END.
+echo 스킬의 본문이 필요해. 반드시 load_skill 도구를 name="echo" 인자로 호출해서 본문을 불러와. 호출 후 별도의 설명은 하지 마.
+이제 data/cache/e2e-week2-note.txt 파일의 내용을 view 도구(path 인자)로 읽어와. 읽은 뒤 한 줄로만 파일 내용을 요약해줘.
+이번 대화에서 지금까지 네가 사용한 도구 이름을 콤마로 구분해 한 줄로만 나열해줘. 도구는 호출하지 말고 답변만 해.

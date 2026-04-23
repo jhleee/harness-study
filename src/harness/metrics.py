@@ -43,6 +43,10 @@ class TraceRecord:
     system_sha256: str = ""
     user_preview: str = ""
     assistant_preview: str = ""
+    # 2주차 추가 — E2E 가 도구 라우팅이 실제로 일어났는지 단언할 때,
+    # 전체 메시지 히스토리를 훑지 않고도 쓸 수 있는 누적 state 스냅샷.
+    total_tool_calls: int = 0
+    loaded_skill_names: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

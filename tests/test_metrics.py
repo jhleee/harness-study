@@ -62,3 +62,15 @@ def test_trace_writer_roundtrip(tmp_path: Path) -> None:
     records = w.read_all()
     assert [r["turn"] for r in records] == [1, 2]
     assert records[0]["input_tokens"] == 10
+
+
+def test_trace_record_week2_fields_serialise(tmp_path: Path) -> None:
+    w = TraceWriter(tmp_path / "t.jsonl")
+    w.write(TraceRecord(
+        turn=2, thread_id="x",
+        total_tool_calls=3,
+        loaded_skill_names=["echo", "notes"],
+    ))
+    r = w.read_all()[0]
+    assert r["total_tool_calls"] == 3
+    assert r["loaded_skill_names"] == ["echo", "notes"]

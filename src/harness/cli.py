@@ -83,6 +83,8 @@ def run(
             user_preview=_preview(user_text),
             assistant_preview=_preview(getattr(assistant, "content", "")),
             system_sha256=hash_system_prompt(result["messages"]),
+            total_tool_calls=int(result.get("tool_call_count", 0)),
+            loaded_skill_names=sorted((result.get("loaded_skills") or {}).keys()),
             **usage,
         )
         writer.write(record)
