@@ -1,0 +1,37 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Harness runtime state
+.harness/
+~/.hermes/
+
+# Checkpointer DBs
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+Thumbs.db
+.DS_Store
