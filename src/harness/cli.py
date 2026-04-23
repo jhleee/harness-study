@@ -59,6 +59,7 @@ def run(
     verbose_trace: bool = True,
     compact_threshold: int | None = None,
     db_path: Path | None = None,
+    skills_dir: Path | None = None,
 ) -> int:
     settings = load_settings()
     if not settings.api_key:
@@ -69,6 +70,8 @@ def run(
         graph_kwargs["compact_threshold"] = compact_threshold
     if db_path is not None:
         graph_kwargs["checkpointer"] = make_sqlite_checkpointer(db_path)
+    if skills_dir is not None:
+        graph_kwargs["skills_dir"] = skills_dir
     graph = build_graph(llm(settings), **graph_kwargs)
     writer = TraceWriter(trace_path)
     config = {"configurable": {"thread_id": thread_id}}
@@ -125,6 +128,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="compactor 의 문자 수 임계치 (디버그/E2E 용).")
     p.add_argument("--db", default=None,
                    help="영속 checkpoint 용 SqliteSaver 경로.")
+    p.add_argument("--skills-dir", default=None,
+                   help="self_improve 출력 디렉터리 오버라이드 (E2E/디버그).")
     return p.parse_args(argv)
 
 
@@ -152,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         verbose_trace=not args.quiet,
         compact_threshold=args.compact_threshold,
         db_path=Path(args.db) if args.db else None,
+        skills_dir=Path(args.skills_dir) if args.skills_dir else None,
     )
 
 

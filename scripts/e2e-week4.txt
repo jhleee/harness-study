@@ -1,0 +1,10 @@
+# 4주차 E2E — self-improvement 루프.
+# data/cache/e2e-w4-N.txt 아래에 파일 5 개를 미리 만들고, 모델이 각각 view 로 읽도록
+# 지시한다 (도구 호출 5 회). 그 뒤 알려진 title 로 finalize.
+# self_improve 가 <skills-dir>/e2e-week4-demo/ 에 SKILL.md 를 쓰면 성공.
+data/cache/e2e-w4-1.txt 파일을 반드시 view 도구로 읽어. 내용 확인 후 추가 설명 없이 응답을 끝내.
+data/cache/e2e-w4-2.txt 파일을 view 도구로 읽어. 설명 없이 끝내.
+data/cache/e2e-w4-3.txt 파일을 view 도구로 읽어. 설명 없이 끝내.
+data/cache/e2e-w4-4.txt 파일을 view 도구로 읽어. 설명 없이 끝내.
+data/cache/e2e-w4-5.txt 파일을 view 도구로 읽어. 설명 없이 끝내.
+이제 지금까지의 작업을 finalize_task 도구로 마무리해. 반드시 인자를 title="e2e-week4-demo"로 정확히 호출해.
