@@ -40,9 +40,15 @@ from harness.tools import ALL_TOOLS, DESTRUCTIVE_TOOLS
 def route_after_agent(state: HarnessState) -> str:
     """agent 노드에서 나가는 조건부 엣지.
 
-    순서가 중요하다 — finalize_task 는 self_improve 로, load_skill 은 전용 노드
-    (스킬 본문 pinning), spawn_subagent 는 자식 그래프 노드, DESTRUCTIVE_TOOLS 는
-    human_gate 로, 그 외는 범용 디스패치로.
+    parallel tool calling 안전성:
+      - 호출이 여러 개면 sentinel(finalize_task/load_skill/spawn_subagent) 은
+        혼재 불가 — 단독 호출만 허용. 이런 sentinel 은 전용 노드가 단일 호출을
+        가정하기 때문에 묶음과 섞이면 응답 매칭이 깨진다. 혼재 시에는 안전하게
+        tool_dispatch 로 보내 각 호출에 1:1 ToolMessage(에러) 가 매겨지게 한다.
+      - destructive 도구가 한 호출이라도 끼어 있으면 묶음 전체를 human_gate 로
+        — 승인은 묶음 단위. 그래야 read+write 같은 혼합에서 write 가 게이트를
+        우회하지 못한다.
+      - 그 외에는 tool_dispatch 가 모든 호출을 일괄 처리.
     """
     if not state.get("messages"):
         return END
@@ -50,15 +56,17 @@ def route_after_agent(state: HarnessState) -> str:
     calls = getattr(last, "tool_calls", None) or []
     if not calls:
         return END
-    name = calls[0].get("name", "")
-    if name == "finalize_task":
-        return "self_improve"
-    if name == "load_skill":
-        return "skill_loader"
-    if name == "spawn_subagent":
-        return "subagent"
-    if name in DESTRUCTIVE_TOOLS:
+    names = [c.get("name", "") for c in calls]
+    if any(n in DESTRUCTIVE_TOOLS for n in names):
         return "human_gate"
+    if len(calls) == 1:
+        name = names[0]
+        if name == "finalize_task":
+            return "self_improve"
+        if name == "load_skill":
+            return "skill_loader"
+        if name == "spawn_subagent":
+            return "subagent"
     return "tool_dispatch"
 
 

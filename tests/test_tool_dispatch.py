@@ -122,3 +122,47 @@ def test_dispatch_offloads_large_tool_output(tmp_path: Path) -> None:
     assert content.startswith("<result path=")
     files = list(tmp_path.iterdir())
     assert len(files) == 1
+
+
+def test_dispatch_handles_parallel_tool_calls(tmp_path: Path) -> None:
+    """모델이 한 AIMessage 에 tool_calls 를 여러 개 담아 보내면, dispatch 는
+    호출당 1개씩 ToolMessage 를 만들어야 한다 — 이걸 빼먹으면 다음 LLM invoke 가
+    'tool call and result not match' 로 거부된다.
+    """
+    dispatch = make_tool_dispatch({"_echo_tool": _echo_tool}, cache_dir=tmp_path)
+    parallel = AIMessage(
+        content="calling echo three times",
+        tool_calls=[
+            {"name": "_echo_tool", "args": {"text": "a"}, "id": "c1"},
+            {"name": "_echo_tool", "args": {"text": "b"}, "id": "c2"},
+            {"name": "_echo_tool", "args": {"text": "c"}, "id": "c3"},
+        ],
+    )
+    out = dispatch({"messages": [parallel]})  # type: ignore[arg-type]
+
+    # tool_call 개수만큼 ToolMessage 가 있고 id 가 1:1 로 매칭되어야 한다.
+    msgs = out["messages"]
+    assert len(msgs) == 3
+    assert [m.tool_call_id for m in msgs] == ["c1", "c2", "c3"]
+    assert [m.content for m in msgs] == ["a", "b", "c"]
+    # 카운터/트레이스도 호출 수만큼 누적.
+    assert out["tool_call_count"] == 3
+    assert len(out["task_trace"]) == 3
+    assert [t["args"]["text"] for t in out["task_trace"]] == ["a", "b", "c"]
+
+
+def test_dispatch_unknown_tool_in_parallel_still_emits_message(tmp_path: Path) -> None:
+    """알 수 없는 도구가 끼어 있어도 다른 호출 응답은 정상으로 나오고 해당
+    호출에는 error ToolMessage 가 매겨진다 — 응답 누락으로 시퀀스를 깨면 안 된다."""
+    dispatch = make_tool_dispatch({"_echo_tool": _echo_tool}, cache_dir=tmp_path)
+    parallel = AIMessage(
+        content="mixed",
+        tool_calls=[
+            {"name": "_echo_tool", "args": {"text": "ok"}, "id": "c1"},
+            {"name": "_nope", "args": {}, "id": "c2"},
+        ],
+    )
+    out = dispatch({"messages": [parallel]})  # type: ignore[arg-type]
+    assert [m.tool_call_id for m in out["messages"]] == ["c1", "c2"]
+    assert out["messages"][0].content == "ok"
+    assert "unknown tool" in out["messages"][1].content

@@ -139,6 +139,56 @@ def test_no_tool_calls_routes_to_end() -> None:
     assert result["messages"][-1].content == "done."
 
 
+# ---------------------- route_after_agent 단위 테스트 -------------------
+
+def test_route_destructive_call_in_parallel_goes_to_human_gate() -> None:
+    """[read, write] 같이 destructive 가 한 호출이라도 끼면 묶음 전체 human_gate.
+    이를 빼먹으면 write 가 게이트를 우회해 실행된다."""
+    from harness.graph import route_after_agent
+    state = {
+        "messages": [AIMessage(
+            content="mixed",
+            tool_calls=[
+                {"name": "read", "args": {"path": "x"}, "id": "c1"},
+                {"name": "write", "args": {"path": "y", "content": "z"}, "id": "c2"},
+            ],
+        )]
+    }
+    assert route_after_agent(state) == "human_gate"  # type: ignore[arg-type]
+
+
+def test_route_sentinel_in_parallel_falls_back_to_dispatch() -> None:
+    """sentinel(load_skill 등) 은 단독 호출만 전용 노드로. 묶음에 끼면
+    tool_dispatch 로 보내 1:1 ToolMessage 가 매겨지게 한다 (응답 누락 방지)."""
+    from harness.graph import route_after_agent
+    state = {
+        "messages": [AIMessage(
+            content="mixed sentinels",
+            tool_calls=[
+                {"name": "load_skill", "args": {"name": "echo"}, "id": "c1"},
+                {"name": "read", "args": {"path": "x"}, "id": "c2"},
+            ],
+        )]
+    }
+    assert route_after_agent(state) == "tool_dispatch"  # type: ignore[arg-type]
+
+
+def test_route_solo_sentinel_still_goes_to_dedicated_node() -> None:
+    from harness.graph import route_after_agent
+    for name, expected in [
+        ("finalize_task", "self_improve"),
+        ("load_skill", "skill_loader"),
+        ("spawn_subagent", "subagent"),
+    ]:
+        state = {
+            "messages": [AIMessage(
+                content="solo",
+                tool_calls=[{"name": name, "args": {}, "id": "c1"}],
+            )]
+        }
+        assert route_after_agent(state) == expected, name  # type: ignore[arg-type]
+
+
 # --------------------------- 3주차 배선 테스트 --------------------------
 
 def test_spawn_subagent_tool_routes_through_subagent_node() -> None:
