@@ -1,8 +1,8 @@
 """4주차 E2E — self-improvement 루프, 끝에서 끝까지.
 
 시나리오:
-  턴 1-5: 미리 준비한 파일 5 개를 모델이 `view` 로 각각 읽도록 지시.
-           매 view 호출은 tool_dispatch 를 거쳐 tool_call_count 를 1 증가시키고
+  턴 1-5: 미리 준비한 파일 5 개를 모델이 `read` 로 각각 읽도록 지시.
+           매 read 호출은 tool_dispatch 를 거쳐 tool_call_count 를 1 증가시키고
            4-튜플 trace 를 append. 5 턴 뒤 tool_call_count == 5.
   턴 6:   finalize_task(title="e2e-week4-demo") 호출을 지시.
            라우터가 이를 self_improve 로 보내고, 노드는 tool_call_count >=
@@ -14,9 +14,9 @@
 단언:
   1. CLI 가 0 으로 종료.
   2. 트레이스 레코드 6 개, Frozen Snapshot 불변식 유지.
-  3. 턴 5 시점 total_tool_calls 가 정확히 5 (매 view 가 tool_dispatch 를 거쳐 카운터 증가).
+  3. 턴 5 시점 total_tool_calls 가 정확히 5 (매 read 가 tool_dispatch 를 거쳐 카운터 증가).
   4. <skills-dir>/e2e-week4-demo/SKILL.md 가 존재.
-  5. SKILL.md 본문에 'Procedure' 섹션이 있고 `view` 가 언급됨 — 4-튜플 트레이스가
+  5. SKILL.md 본문에 'Procedure' 섹션이 있고 `read` 가 언급됨 — 4-튜플 트레이스가
      distiller 까지 도달했다는 증거.
 
 HARNESS_E2E=1 뒤로 게이트.
@@ -97,7 +97,7 @@ def test_week4_self_improvement_loop(tmp_path: Path) -> None:
         hashes = {r["system_sha256"] for r in records}
         assert len(hashes) == 1, f"시스템 프롬프트가 드리프트했다: {hashes}"
 
-        # 턴 5 까지 tool_call_count 가 최소 5 이어야 한다 (매 턴 view 한 번씩;
+        # 턴 5 까지 tool_call_count 가 최소 5 이어야 한다 (매 턴 read 한 번씩;
         # 모델이 추가로 호출했으면 더 많을 수도 있다).
         assert records[4]["total_tool_calls"] >= 5, (
             "턴 5 까지 최소 5 번의 tool_dispatch 실행을 기대; "
@@ -112,7 +112,7 @@ def test_week4_self_improvement_loop(tmp_path: Path) -> None:
         )
         body = skill_md.read_text(encoding="utf-8")
         assert "Procedure" in body
-        assert "view" in body
+        assert "read" in body
     finally:
         for p in staged:
             p.unlink(missing_ok=True)

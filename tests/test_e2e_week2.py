@@ -6,7 +6,7 @@
           skill_loader 로 보낸다. 턴 후 state.loaded_skills 에 'echo' 가 있어야 하고,
           messages 에는 <skill:echo> ToolMessage 가 있어야 한다.
 
-  턴 2: "data/cache/e2e-week2-note.txt 를 view" — tool_dispatch 를 통해 view 호출을
+  턴 2: "data/cache/e2e-week2-note.txt 를 read" — tool_dispatch 를 통해 read 호출을
           유도한다. subprocess 가 돌기 전에 파일을 미리 만들어 두어 읽기가 성공하도록
           한다.
 
@@ -19,9 +19,9 @@
   3. 모든 system_sha256 동일 — 스킬 로드와 도구 디스패치를 지나도 Frozen Snapshot 이
      유지된다. 커리큘럼의 중요한 약속 중 하나 — 동적 로딩이 캐시 프리픽스를 깨지 않는다.
   4. 턴 1 후 loaded_skill_names 에 'echo' 가 포함.
-  5. 턴 2 후 total_tool_calls >= 1 (view 호출이 최소 한 번은 반영).
+  5. 턴 2 후 total_tool_calls >= 1 (read 호출이 최소 한 번은 반영).
   6. 턴 2 어시스턴트 preview 에 미리 심어둔 SENTINEL('SENTINEL-W2') 이 언급됨 —
-     모델이 실제로 view 로 파일을 읽었다는 증거.
+     모델이 실제로 read 로 파일을 읽었다는 증거.
 
 HARNESS_E2E=1 뒤로 게이트.
 """
@@ -56,7 +56,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 def test_week2_progressive_disclosure_gate(tmp_path: Path) -> None:
     assert SCRIPT.exists()
 
-    # 모델이 view 해 달라고 요청할 파일을 미리 만들어 둔다.
+    # 모델이 read 해 달라고 요청할 파일을 미리 만들어 둔다.
     STAGED_FILE.parent.mkdir(parents=True, exist_ok=True)
     STAGED_FILE.write_text(
         f"This file contains {SENTINEL}. It exists solely for the Week 2 E2E test.\n",
@@ -99,7 +99,7 @@ def test_week2_progressive_disclosure_gate(tmp_path: Path) -> None:
         assert "echo" in records[0]["loaded_skill_names"], \
             f"턴 1 이후 echo 가 loaded_skills 에 있어야 하는데: {records[0]}"
 
-        # 턴 2: view 도구가 최소 한 번 디스패치됨.
+        # 턴 2: read 도구가 최소 한 번 디스패치됨.
         assert records[1]["total_tool_calls"] >= 1, \
             f"턴 2 이후 tool_call_count >= 1 를 기대했는데: {records[1]}"
 

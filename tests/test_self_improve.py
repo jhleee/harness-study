@@ -26,7 +26,7 @@ def _trace_entries(n: int) -> list[dict]:
     return [
         {
             "reasoning": f"step {i}",
-            "tool": "view",
+            "tool": "read",
             "args": {"path": f"/tmp/{i}"},
             "observation": f"result-{i}",
         }
@@ -67,7 +67,7 @@ def test_self_improve_at_threshold_writes_skill_md(tmp_path: Path) -> None:
     body = written.read_text(encoding="utf-8")
     assert "git-log-search" in body
     assert "Procedure" in body
-    assert "view" in body
+    assert "read" in body
     # Ack message references the path.
     assert "saved:" in out["messages"][0].content
 

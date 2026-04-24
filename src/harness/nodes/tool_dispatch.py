@@ -61,7 +61,7 @@ def _maybe_offload(content: str, cache_dir: Path) -> str:
     return (
         f"<result path='{path}' bytes={len(content)}>\n"
         f"{preview}"
-        + ("…(잘림, 전체 내용은 view 도구로 읽으세요)" if len(content) > OFFLOAD_PREVIEW_CHARS else "")
+        + ("…(잘림, 전체 내용은 read 도구로 읽으세요)" if len(content) > OFFLOAD_PREVIEW_CHARS else "")
         + "\n</result>"
     )
 

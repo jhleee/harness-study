@@ -100,10 +100,10 @@ def test_load_skill_tool_call_routes_through_skill_loader() -> None:
     assert result["skill_last_used"]["echo"] == result["turn"] - 1  # 두 번째 agent 증가 전에 기록
 
 
-def test_view_tool_call_routes_through_tool_dispatch(tmp_path) -> None:
-    """에이전트가 턴 1 에 view(path) 호출 → tool_dispatch 가 파일 읽기 → agent."""
+def test_read_tool_call_routes_through_tool_dispatch(tmp_path) -> None:
+    """에이전트가 턴 1 에 read(path) 호출 → tool_dispatch 가 파일 읽기 → agent."""
     from harness.config import DATA_DIR
-    target = DATA_DIR / "cache" / "test_view_graph.txt"
+    target = DATA_DIR / "cache" / "test_read_graph.txt"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("file-body", encoding="utf-8")
 
@@ -112,7 +112,7 @@ def test_view_tool_call_routes_through_tool_dispatch(tmp_path) -> None:
             AIMessage(
                 content="Reading the file.",
                 tool_calls=[
-                    {"name": "view", "args": {"path": str(target)}, "id": "v1"}
+                    {"name": "read", "args": {"path": str(target)}, "id": "v1"}
                 ],
             ),
             AIMessage(content="Saw it."),
@@ -120,12 +120,12 @@ def test_view_tool_call_routes_through_tool_dispatch(tmp_path) -> None:
     )
     graph = build_graph(llm)
     try:
-        result = _invoke(graph, "go", thread_id="t-view")
+        result = _invoke(graph, "go", thread_id="t-read")
         tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_msgs) == 1
         assert "file-body" in tool_msgs[0].content
         assert result["tool_call_count"] == 1
-        assert result["task_trace"][0]["tool"] == "view"
+        assert result["task_trace"][0]["tool"] == "read"
     finally:
         target.unlink(missing_ok=True)
 
@@ -195,7 +195,7 @@ def test_finalize_task_routes_to_self_improve_and_writes_skill(tmp_path) -> None
     # 실제 도구를 돌리지 않고 finalize 가 임계치를 넘도록 state 를 seed.
     graph = build_graph(llm, use_llm_summarizer=False, skills_dir=tmp_path)
     seeded_trace = [
-        {"reasoning": f"r{i}", "tool": "view",
+        {"reasoning": f"r{i}", "tool": "read",
          "args": {"path": f"/x/{i}"}, "observation": f"o{i}"}
         for i in range(5)
     ]
