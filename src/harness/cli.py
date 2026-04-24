@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from harness.config import TRACE_DIR, llm, load_settings
 from harness.graph import build_graph, make_sqlite_checkpointer
@@ -60,6 +60,7 @@ def run(
     compact_threshold: int | None = None,
     db_path: Path | None = None,
     skills_dir: Path | None = None,
+    auto_approve: bool = False,
 ) -> int:
     settings = load_settings()
     if not settings.api_key:
@@ -82,6 +83,12 @@ def run(
         result = graph.invoke(
             {"messages": [HumanMessage(content=user_text)]},
             config=config,
+        )
+        # human_gate 가 interrupt_before 로 그래프를 멈춰뒀으면 사용자 승인을 받아 resume.
+        # 이 단계를 빠뜨리면 다음 턴 invoke 가 ToolMessage 없이 AIMessage(tool_call) 만
+        # 들고 LLM 에 가서 'tool call result does not follow tool call' 로 거부당한다.
+        result = _drain_interrupts(
+            graph, config, auto_approve=auto_approve, fallback=result
         )
         assistant = result["messages"][-1]
         print(f"assistant> {assistant.content}")
@@ -109,6 +116,74 @@ def run(
     return 0
 
 
+def _last_tool_call(messages: list) -> dict | None:
+    """state.messages 끝에서부터 가장 최근 AIMessage 의 첫 tool_call 을 돌려준다."""
+    for m in reversed(messages):
+        if isinstance(m, AIMessage):
+            calls = getattr(m, "tool_calls", None) or []
+            return calls[0] if calls else None
+    return None
+
+
+def _prompt_approval(call: dict | None) -> bool:
+    if call is None:
+        return True
+    name = call.get("name", "?")
+    args = call.get("args", {})
+    print(f"\n[승인 요청] 파괴적 도구 호출: {name}({args})", file=sys.stderr)
+    try:
+        ans = input("승인하시겠습니까? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return ans in ("y", "yes")
+
+
+def _drain_interrupts(
+    graph,
+    config: dict,
+    *,
+    auto_approve: bool,
+    fallback: dict,
+    max_iters: int = 8,
+) -> dict:
+    """state.next 가 비워질 때까지 human_gate interrupt 를 처리한다.
+
+    interrupt_before=['human_gate'] 가 트리거되면 첫 invoke 는 human_gate 직전에서
+    멈춘다. 사용자(또는 auto_approve) 가 승인하면 invoke(None) 으로 이어 달리고,
+    거부하면 update_state 로 denial ToolMessage 를 tool_dispatch 가 만든 것처럼
+    삽입해 그래프가 정상 종료되도록 한다.
+    """
+    state = graph.get_state(config)
+    if not state.next:
+        return fallback
+    for _ in range(max_iters):
+        if not state.next:
+            break
+        pending = _last_tool_call(state.values.get("messages") or [])
+        approved = True if auto_approve else _prompt_approval(pending)
+        if approved:
+            graph.invoke(None, config=config)
+        else:
+            tool_id = (pending or {}).get("id", "")
+            graph.update_state(
+                config,
+                {"messages": [ToolMessage(
+                    content="error: tool call denied by user",
+                    tool_call_id=tool_id,
+                )]},
+                as_node="tool_dispatch",
+            )
+            graph.invoke(None, config=config)
+        state = graph.get_state(config)
+    if state.next:
+        print(
+            f"warning: {max_iters} 회 resume 후에도 pending 노드가 남음: {state.next}",
+            file=sys.stderr,
+        )
+    return state.values
+
+
 def _preview(text: str, n: int = 400) -> str:
     text = (text or "").replace("\n", " ").strip()
     return text[:n] + ("…" if len(text) > n else "")
@@ -130,6 +205,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="영속 checkpoint 용 SqliteSaver 경로.")
     p.add_argument("--skills-dir", default=None,
                    help="self_improve 출력 디렉터리 오버라이드 (E2E/디버그).")
+    p.add_argument("--auto-approve", action="store_true",
+                   help="human_gate 에서 파괴적 도구 호출을 자동 승인 "
+                        "(--script 모드에서는 기본 활성화).")
     return p.parse_args(argv)
 
 
@@ -150,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
     thread_id = args.thread_id or f"cli-{uuid.uuid4().hex[:8]}"
     trace_path = Path(args.trace) if args.trace else (TRACE_DIR / f"{thread_id}.jsonl")
     script_path = Path(args.script) if args.script else None
+    # 스크립트 모드는 사람이 옆에 없으니 기본 자동 승인. 명시적 --auto-approve 도 존중.
+    auto_approve = args.auto_approve or script_path is not None
     return run(
         _iter_inputs(script_path),
         thread_id=thread_id,
@@ -158,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         compact_threshold=args.compact_threshold,
         db_path=Path(args.db) if args.db else None,
         skills_dir=Path(args.skills_dir) if args.skills_dir else None,
+        auto_approve=auto_approve,
     )
 
 
